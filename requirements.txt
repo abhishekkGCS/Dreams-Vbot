@@ -1,0 +1,20 @@
+# Web framework and Async
+fastapi
+uvicorn[standard]
+
+# LiveKit (Real-time Audio/Video)
+livekit
+livekit-agents
+livekit-plugins-deepgram
+livekit-plugins-elevenlabs
+livekit-plugins-google
+
+# LLM SDK
+google-generativeai
+
+# Database & Caching
+motor          # Async MongoDB driver
+redis          # For short-term caching/session state
+
+# Utilities
+python-dotenv
