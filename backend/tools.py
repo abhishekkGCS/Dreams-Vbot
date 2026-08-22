@@ -20,107 +20,23 @@ The Solution: We give Jarvis Memory Tools. We teach him to automatically extract
 The Injection: Next week, when you connect to a new room, we query MongoDB before Jarvis says hello, and we inject those facts directly into his system prompt: "You are talking to Alex. He likes Python."
 """
 
-
-# import asyncio
-# import json
-# from datetime import datetime
-
-
-# class JarvisTools:
-#     def __init__(self):
-#         self.fake_mongo_db = {
-#             "preferences": [],
-#             "notes": [],
-#             "projects": {},
-#         }
-
-#     async def get_time(self):
-#         print("🛠️ Tool Executed: get_time")
-#         now = datetime.now().strftime("%I:%M %p on %A, %B %d")
-#         return f"The current time is {now}"
-
-#     async def search_web(self, query: str):
-#         print(f"🛠️ Tool Executed: search_web | Query: {query}")
-#         await asyncio.sleep(1)
-#         return f"Here is the top result for '{query}': OpenAI and Google just released new multimodal voice models."
-
-#     async def calculator(self, equation: str):
-#         print(f"🛠️ Tool Executed: calculator | Equation: {equation}")
-#         try:
-#             return f"The answer is {eval(equation)}"
-#         except Exception:
-#             return "I could not calculate that."
-
-#     async def save_user_fact(self, fact: str):
-#         print(f"🧠 MEMORY SAVED: {fact}")
-#         self.fake_mongo_db["preferences"].append(fact)
-#         return "Fact saved successfully to long-term memory."
-
-#     async def recall_user_facts(self):
-#         print("🧠 MEMORY RECALLED")
-#         if not self.fake_mongo_db["preferences"]:
-#             return "No past memories found."
-#         return json.dumps(self.fake_mongo_db["preferences"])
-
-#     async def create_project(self, project_name: str):
-#         print(f"📁 PROJECT CREATED: {project_name}")
-#         if project_name in self.fake_mongo_db["projects"]:
-#             return f"Project '{project_name}' already exists."
-
-#         self.fake_mongo_db["projects"][project_name] = []
-#         return f"Project '{project_name}' created successfully."
-
-#     async def add_task(self, project_name: str, task_name: str, deadline: str, priority: str):
-#         print(f"✅ TASK ADDED -> Project: {project_name} | Task: {task_name} | Priority: {priority} | Due: {deadline}")
-
-#         if project_name not in self.fake_mongo_db["projects"]:
-#             return f"Error: Project '{project_name}' does not exist. Tell the user to create it first."
-
-#         new_task = {
-#             "name": task_name,
-#             "deadline": deadline,
-#             "priority": priority,
-#             "status": "pending",
-#         }
-#         self.fake_mongo_db["projects"][project_name].append(new_task)
-#         return f"Task added to project '{project_name}' successfully."
-
-#     async def update_task_status(self, project_name: str, task_name: str, status: str):
-#         print(f"🔄 TASK UPDATED -> Project: {project_name} | Task: {task_name} | Status: {status}")
-
-#         if project_name not in self.fake_mongo_db["projects"]:
-#             return f"Project '{project_name}' not found."
-
-#         for task in self.fake_mongo_db["projects"][project_name]:
-#             if task_name.lower() in task["name"].lower():
-#                 task["status"] = status
-#                 return f"Task '{task_name}' marked as {status}."
-
-#         return f"Could not find task '{task_name}' in project '{project_name}'."
-
-#     async def list_tasks(self, project_name: str):
-#         print(f"📋 LISTING TASKS FOR: {project_name}")
-
-#         if project_name not in self.fake_mongo_db["projects"]:
-#             return f"Project '{project_name}' does not exist."
-
-#         tasks = self.fake_mongo_db["projects"][project_name]
-#         if not tasks:
-#             return f"There are no tasks in project '{project_name}'."
-
-#         return json.dumps(tasks)
-
-
-
-
 # tools.py
+import pygetwindow as gw
 import json
 import asyncio
 from datetime import datetime
 from livekit.agents import llm, log
-from duckduckgo_search import DDGS # Real web search
+from ddgs import DDGS
+import psutil
+import pyautogui # Real web search
 from memory import MemoryManager # Real Mongo database manager
+from PIL import ImageGrab
+import pytesseract
 
+
+
+# Point Python to the Tesseract software you just installed
+pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 logger = log.logger
 
 class JarvisTools(llm.Toolset):
@@ -133,23 +49,154 @@ class JarvisTools(llm.Toolset):
 
     @llm.function_tool(description="Get the current time and date.")
     async def get_time(self):
+        
         logger.info("executing tool: get_time")
         now = datetime.now().strftime("%I:%M %p on %A, %B %d")
         return f"The current time is {now}"
+    
+    @llm.function_tool(description="Check the current CPU load percentage and RAM memory usage of the computer.")
+    async def get_system_info(self):
+        logger.info("executing tool: get_system_info")
+        
+        # Get overall CPU usage (1 second blocking to get an accurate reading)
+        cpu_percent = psutil.cpu_percent(interval=1.0)
+        
+        # Get RAM usage
+        ram = psutil.virtual_memory()
+        ram_total = round(ram.total / (1024**3), 1)  # Convert to GB
+        ram_used = round(ram.used / (1024**3), 1)
+        
+        return f"CPU Load is at {cpu_percent}%. RAM Usage is {ram.percent}% ({ram_used}GB used out of {ram_total}GB)."
 
+    @llm.function_tool(description="Control media playback on the computer (play, pause, next, previous, mute).")
+    async def media_control(self, action: str):
+        logger.info("executing tool: media_control", extra={"action": action})
+        
+        # Map the LLM's chosen action to the actual Windows media key commands
+        valid_actions = {
+            "play": "playpause",
+            "pause": "playpause",
+            "next": "nexttrack",
+            "previous": "prevtrack",
+            "mute": "volumemute"
+        }
+        
+        # Normalize the action string to lowercase
+        cmd = valid_actions.get(action.lower().strip())
+        
+        if not cmd:
+            return f"I don't know how to perform the media action: {action}. Supported actions are play, pause, next, previous, and mute."
+            
+        # Simulate pressing the media key on the keyboard
+        pyautogui.press(cmd)
+        return f"Successfully executed media action: {action}"
+    
+    # --- SCREEN & WINDOW TOOLS ---
+    # # Reading the screen and active window is useful for context-aware responses, especially when the user is multitasking.
+    # @llm.function_tool(description="Read all the visible text currently on the user's computer screen.")
+    # async def get_screen_text(self):
+    #     logger.info("executing tool: get_screen_text")
+    #     import asyncio
+        
+    #     try:
+    #         def perform_ocr():
+    #             # Take an invisible screenshot of the main monitor
+    #             screenshot = ImageGrab.grab()
+    #             # Extract the text using Tesseract
+    #             text = pytesseract.image_to_string(screenshot)
+    #             return text.strip()
+    #         # Run this in a background thread to prevent audio stutter
+    #         screen_text = await asyncio.to_thread(perform_ocr)
+            
+    #         if screen_text:
+    #             return f"Here is the raw text currently visible on the user's screen:\n{screen_text}"
+    #         else:
+    #             return "The screen appears to be blank or I could not detect any readable text."
+                
+    #     except Exception as e:
+    #         logger.error("get_screen_text failed", exc_info=e)
+    #         return "I encountered an error trying to read the screen."     
+    
+     @llm.function_tool(description="Read all the visible text currently on the user's computer screen.")
+    async def get_screen_text(self):
+        logger.info("executing tool: get_screen_text")
+        import asyncio
+        
+        try:
+            def perform_ocr():
+                # Take an invisible screenshot of the main monitor
+                screenshot = ImageGrab.grab()
+                
+                # FIX 1: Convert image to grayscale to help Tesseract read Dark Mode
+                screenshot = screenshot.convert('L')
+                
+                # Extract the text using Tesseract
+                text = pytesseract.image_to_string(screenshot)
+                
+                # FIX 2: Limit text to 3000 characters so it doesn't crash the LLM memory
+                return text.strip()[:3000]
+            # Run this in a background thread to prevent audio stutter
+            screen_text = await asyncio.to_thread(perform_ocr)
+            
+            if screen_text:
+                return f"Here is the raw text currently visible on the user's screen:\n{screen_text}"
+            else:
+                return "The screen appears to be blank or I could not detect any readable text."
+                
+        except Exception as e:
+            logger.error("get_screen_text failed", exc_info=e)
+            return "I encountered an error trying to read the screen."
+       
+    
+    @llm.function_tool(description="Play a specific song, artist, or video on YouTube.")
+    async def play_music_youtube(self, search_query: str):
+        logger.info("executing tool: play_music_youtube", extra={"search_query": search_query})
+        import webbrowser
+        import asyncio
+        from ddgs import DDGS
+        
+        try:
+            def get_youtube_link():
+                # Search DuckDuckGo specifically for a YouTube link
+                with DDGS() as ddgs:
+                    results = list(ddgs.text(f"site:youtube.com {search_query}", max_results=1))
+                    if results:
+                        return results[0]['href']
+                    return None
+            
+            # Run the search in the background
+            url = await asyncio.to_thread(get_youtube_link)
+            
+            if url:
+                # Open the default web browser to the YouTube video!
+                webbrowser.open(url)
+                return f"I have opened a new tab and started playing {search_query} on YouTube."
+            else:
+                return f"I couldn't find a YouTube link for {search_query}."
+                
+        except Exception as e:
+            logger.error("play_music_youtube failed", exc_info=e)
+            return "I had trouble accessing YouTube right now."
+    
     @llm.function_tool(description="Search the web for real-time news, facts, or information.")
     async def search_web(self, query: str):
         logger.info("executing tool: search_web", extra={"query": query})
         try:
-            async with DDGS() as ddgs:
-                results = [r async for r in ddgs.text(query, max_results=3)]
-                if not results:
-                    return f"I couldn't find any information on '{query}'."
-
-                formatted_results = "Raw Web Data:\n"
-                for i, res in enumerate(results):
-                    formatted_results += f"\nResult {i+1}: {res['title']}\nSnippet: {res['body']}\n"
-                return formatted_results
+            # We wrap the synchronous DDGS search in a background thread 
+            # so it doesn't freeze the LiveKit audio loop!
+            def do_search():
+                with DDGS() as ddgs:
+                    return list(ddgs.text(query, max_results=3))
+                    
+            results = await asyncio.to_thread(do_search)
+            
+            if not results:
+                return f"I couldn't find any information on '{query}'."
+            formatted_results = "Raw Web Data:\n"
+            for i, res in enumerate(results):
+                formatted_results += f"\nResult {i+1}: {res['title']}\nSnippet: {res['body']}\n"
+            return formatted_results
+            
         except Exception as e:
             logger.error("search_web tool failed", exc_info=e)
             return "I am having trouble accessing the internet right now."
@@ -287,3 +334,22 @@ class JarvisTools(llm.Toolset):
             return f"There are no tasks in project '{project_name}'."
 
         return json.dumps(tasks)
+    
+    
+    # Giving bot eyes
+    # This tool will help you tell which windows is currently active or opened.
+    @llm.function_tool(description="Check what application or window the user is currently looking at on their screen.")
+    async def get_active_window(self):
+        logger.info("executing tool: get_active_window")
+        try:
+            # Grab the window that is currently active/focused
+            active_window = gw.getActiveWindow()
+            
+            if active_window and active_window.title:
+                return f"The user is currently looking at a window titled: '{active_window.title}'"
+            else:
+                return "The user is on the desktop or I cannot read the active window title."
+                
+        except Exception as e:
+            logger.error("get_active_window failed", exc_info=e)
+            return "I was unable to read the active window."

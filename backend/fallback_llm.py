@@ -83,3 +83,7 @@ class LLMRotator:
         new_name = self.providers[self.current_index]["name"]
         print(f"🔄 ROTATING LLM: {old_name} → {new_name}")
         return True
+    
+    def get_current_provider_name(self):
+        return self.providers[self.current_index]["name"]
+    
